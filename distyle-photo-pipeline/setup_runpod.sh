@@ -14,11 +14,12 @@ if command -v apt-get >/dev/null 2>&1; then
   sudo apt-get install -y -qq git curl
 fi
 
-# Ollama (llava scoring)
-if ! command -v ollama >/dev/null 2>&1; then
-  curl -fsSL https://ollama.com/install.sh | sh
-fi
-ollama pull llava
+# Ollama optional — default VISION_USE_OLLAMA=0 (heuristics only).
+# GPU reserved for FLUX. Install only if you later enable VISION_USE_OLLAMA=1.
+# if ! command -v ollama >/dev/null 2>&1; then
+#   curl -fsSL https://ollama.com/install.sh | sh
+# fi
+# ollama pull llava
 
 # Server venv + CUDA torch
 cd "$ROOT/server"
@@ -44,22 +45,19 @@ fi
 
 cat <<'EOF'
 
-=== Paleidimas (3 terminalai arba tmux) ===
+=== Paleidimas (2 terminalai) ===
+# GPU = tik FLUX. Scoring = heuristics (Ollama nereikia).
 
-# 1) Ollama — CPU only, kad FLUX gautu visa 4090 VRAM (llava scoring)
-OLLAMA_NUM_GPU=0 ollama serve
-
-# 2) AI serveris (FLUX Kontext ant CUDA)
+# 1) AI serveris
 cd server && source .venv/bin/activate
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-# Pirmas kartas: huggingface-cli login  (FLUX.1-Kontext-dev license)
 python main.py
 
-# 3) 3 etapu batch (sofos)
+# 2) Pipeline
 cd client && source .venv/bin/activate
 python -m distyle_photo health
-python -m distyle_photo preview-batch      # etapas 1: 2 sofos, be WP
-python -m distyle_photo test-batch         # etapas 2: 10 sofu + WP (po OK)
-python -m distyle_photo batch-all          # etapas 3: visos sofos (po OK)
+python -m distyle_photo preview-batch
+python -m distyle_photo test-batch
+python -m distyle_photo batch-all
 
 EOF

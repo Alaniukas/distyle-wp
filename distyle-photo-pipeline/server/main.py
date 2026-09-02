@@ -35,9 +35,15 @@ def verify_key(x_api_key: Optional[str] = Header(None)) -> None:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
+def _vision_use_ollama() -> bool:
+    # Default OFF: GPU is for FLUX. Heuristics pick the reference photo.
+    return os.getenv("VISION_USE_OLLAMA", "0").lower() in ("1", "true", "yes", "on")
+
+
 @app.get("/health")
 def health():
-    ollama = check_ollama()
+    use_ollama = _vision_use_ollama()
+    ollama = check_ollama() if use_ollama else {"status": "disabled"}
     cutout_ok = True
     try:
         import rembg  # noqa: F401
@@ -47,7 +53,8 @@ def health():
     return {
         "status": "ok",
         "ollama": ollama.get("status", "unknown"),
-        "ollama_model": os.getenv("OLLAMA_MODEL", "llava"),
+        "ollama_model": os.getenv("OLLAMA_MODEL", "llava") if use_ollama else None,
+        "vision": "heuristics+ollama" if use_ollama else "heuristics",
         "cutout": "ok" if cutout_ok else "rembg_missing",
         "generate": available_backend(),
     }
@@ -55,17 +62,20 @@ def health():
 
 @app.post("/vision/score", dependencies=[Depends(verify_key)])
 async def vision_score(file: UploadFile = File(...)):
-    """Score image for sofa photo suitability (heuristics + Ollama)."""
+    """Score image for sofa photo suitability (heuristics; optional Ollama)."""
     data = await file.read()
     heur = score_image_heuristics(data)
-    ollama = score_with_ollama(data)
-    ollama_score = ollama.get("ollama_score")
+    ollama_score = None
+    ollama: dict = {"ollama_score": None, "skipped": True}
+    if _vision_use_ollama():
+        ollama = score_with_ollama(data)
+        ollama_score = ollama.get("ollama_score")
     final = combined_score(
         heur["heuristic_score"],
         ollama_score,
         heuristic_reject=heur.get("reject", False),
     )
-    # Hard reject only from heuristics; Ollama adjusts score but cutout is final gate
+    # Hard reject only from heuristics; Ollama adjusts score when enabled
     rejected = heur.get("reject", False)
     if ollama_score is not None and ollama_score < 35:
         rejected = True
