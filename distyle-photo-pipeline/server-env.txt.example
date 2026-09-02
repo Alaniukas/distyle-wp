@@ -1,0 +1,18 @@
+# Server .env — upload as server-env.txt then: bash setup_env.sh
+# A40 / L40S 48GB quality settings
+CUTOUT_API_KEY=local-test-key
+HOST=0.0.0.0
+PORT=8765
+BG_COLOR_R=237
+BG_COLOR_G=236
+BG_COLOR_B=232
+VISION_USE_OLLAMA=0
+LOCAL_IMAGE_GEN=1
+LOCAL_IMAGE_DEVICE=cuda
+LOCAL_IMAGE_MODEL=black-forest-labs/FLUX.1-Kontext-dev
+LOCAL_IMAGE_STEPS=32
+LOCAL_IMAGE_GUIDANCE=2.0
+LOCAL_IMAGE_OFFLOAD=0
+LOCAL_IMAGE_MAX_SIDE=1024
+LOCAL_IMAGE_OUT_SIDE=1024
+HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
