@@ -1,0 +1,16 @@
+.env
+server/.env
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+client/output/
+client/backups/
+client/_preview*/
+client/_review*/
+*.webp
+*.png
+*.jpg
+*.jpeg
+.DS_Store
+Thumbs.db
