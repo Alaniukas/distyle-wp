@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import logging
 import os
 from typing import List, Optional
 
@@ -20,6 +21,9 @@ from cutout import process_cutout
 from generate import available_backend, process_generate
 from image_heuristics import score_image_heuristics
 from vision_ollama import check_ollama, combined_score, score_with_ollama
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 app = FastAPI(title="DiStyle AI Server", version="1.1.0")
 
@@ -126,6 +130,7 @@ async def generate(
             product_id=product_id,
         )
     except Exception as e:
+        logger.exception("generate failed product_id=%s", product_id)
         raise HTTPException(status_code=500, detail=str(e))
 
     return JSONResponse({

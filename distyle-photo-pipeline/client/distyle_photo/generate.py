@@ -34,7 +34,17 @@ def process_generate(
 
     with httpx.Client(timeout=300) as client:
         r = client.post(url, headers=headers, files=files, params=params)
-        r.raise_for_status()
+        if r.status_code >= 400:
+            detail = r.text
+            try:
+                detail = r.json().get("detail", detail)
+            except Exception:
+                pass
+            raise httpx.HTTPStatusError(
+                f"{r.status_code} {detail}",
+                request=r.request,
+                response=r,
+            )
         data = r.json()
         webp = base64.b64decode(data["webp_b64"])
         meta = data.get("meta", {})

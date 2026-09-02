@@ -33,7 +33,7 @@ cd "$ROOT/client"
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -U pip
-pip install -e .
+pip install -r requirements.txt
 
 # Env template reminder
 if [[ ! -f "$ROOT/.env" ]]; then

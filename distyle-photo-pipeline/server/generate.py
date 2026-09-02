@@ -168,7 +168,9 @@ def _local_device() -> str:
     return "cuda" if torch.cuda.is_available() else "cpu"
 
 
-def _prepare_ref_image(ref: bytes, max_side: int = 1024) -> Image.Image:
+def _prepare_ref_image(ref: bytes, max_side: int | None = None) -> Image.Image:
+    if max_side is None:
+        max_side = int(os.getenv("LOCAL_IMAGE_MAX_SIDE", "768"))
     img = Image.open(io.BytesIO(ref)).convert("RGB")
     img.thumbnail((max_side, max_side), Image.BICUBIC)
     return img
@@ -186,11 +188,8 @@ def _load_local_pipe():
     model_lower = model.lower()
     token = _hf_token()
     load_kw: Dict[str, Any] = {"token": token} if token else {}
-
-    if device == "cuda":
-        load_kw["torch_dtype"] = torch.bfloat16
-    else:
-        load_kw["torch_dtype"] = torch.float32
+    dtype = torch.bfloat16 if device == "cuda" else torch.float32
+    load_kw["dtype"] = dtype
 
     if "kontext" in model_lower:
         from diffusers import FluxKontextPipeline
@@ -200,8 +199,6 @@ def _load_local_pipe():
     elif "flux" in model_lower:
         from diffusers import FluxImg2ImgPipeline
 
-        load_kw.pop("torch_dtype", None)
-        load_kw["dtype"] = torch.bfloat16 if device == "cuda" else torch.float32
         pipe = FluxImg2ImgPipeline.from_pretrained(model, **load_kw)
         kind = "flux_i2i"
     else:
@@ -209,11 +206,21 @@ def _load_local_pipe():
 
         if device == "cuda":
             load_kw["variant"] = "fp16"
-            load_kw["torch_dtype"] = torch.float16
+            load_kw["dtype"] = torch.float16
         pipe = AutoPipelineForImage2Image.from_pretrained(model, **load_kw)
         kind = "sd_i2i"
 
-    pipe = pipe.to(device)
+    offload_default = "1" if device == "cuda" and kind == "flux_kontext" else "0"
+    use_offload = os.getenv("LOCAL_IMAGE_CPU_OFFLOAD", offload_default).lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    if device == "cuda" and use_offload:
+        pipe.enable_model_cpu_offload()
+    else:
+        pipe = pipe.to(device)
+
     _local_pipe = pipe
     _local_pipe_kind = kind
     return pipe, kind
