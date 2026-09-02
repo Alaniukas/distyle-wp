@@ -16,12 +16,16 @@ load_dotenv(_P(__file__).resolve().parents[1] / ".env")
 
 from cutout import _bg_color
 
-# CLIP (sd-turbo) max 77 tokens — the long PROMPT is truncated and the studio
-# instructions never reach the local model.
+# Kontext is an EDIT model: preserve product, change only background.
+# Short "catalog photo of this sofa" prompts make it reinvent the product.
 LOCAL_PROMPT = (
-    "Front-on photoreal furniture catalog photo of this exact sofa, "
-    "seamless solid studio background #edece8, one soft contact shadow, "
-    "no room no furniture no text, square 1:1"
+    "Keep this exact sofa unchanged: same shape, proportions, armrests, legs, "
+    "seams, piping, fabric color and weave, and the same pillows only — "
+    "do not add, remove, or invent pillows or a blanket. "
+    "Change only the background to a seamless solid studio backdrop #edece8 "
+    "with no wall, no horizon line, no carpet texture, no room, no extra furniture. "
+    "Keep front-on eye-level camera. Soft contact shadow under the sofa only. "
+    "Photoreal fabric, sharp seams, no melted or blotchy texture."
 )
 
 # One prompt. Do not stack extra instructions on top — contradictions
@@ -170,7 +174,8 @@ def _local_device() -> str:
 
 def _prepare_ref_image(ref: bytes, max_side: int | None = None) -> Image.Image:
     if max_side is None:
-        max_side = int(os.getenv("LOCAL_IMAGE_MAX_SIDE", "768"))
+        # 1024 is the quality floor for FLUX; 768 looked melted after upscale.
+        max_side = int(os.getenv("LOCAL_IMAGE_MAX_SIDE", "1024"))
     img = Image.open(io.BytesIO(ref)).convert("RGB")
     img.thumbnail((max_side, max_side), Image.BICUBIC)
     return img
@@ -210,9 +215,10 @@ def _load_local_pipe():
         pipe = AutoPipelineForImage2Image.from_pretrained(model, **load_kw)
         kind = "sd_i2i"
 
+    # Without Ollama, model offload usually fits 24GB and looks better than sequential.
     offload_mode = os.getenv(
         "LOCAL_IMAGE_OFFLOAD",
-        "sequential" if kind == "flux_kontext" else "model",
+        "model" if kind == "flux_kontext" else "model",
     ).lower()
     if device == "cuda" and offload_mode in ("sequential", "model", "1", "true", "yes"):
         if offload_mode == "sequential":
@@ -221,6 +227,8 @@ def _load_local_pipe():
             pipe.enable_model_cpu_offload()
     elif device == "cuda":
         pipe = pipe.to(device)
+    else:
+        pipe = pipe.to(device)
 
     _local_pipe = pipe
     _local_pipe_kind = kind
@@ -228,10 +236,12 @@ def _load_local_pipe():
 
 
 def _run_local_pipe(pipe, kind: str, img: Image.Image) -> Image.Image:
-    steps = int(os.getenv("LOCAL_IMAGE_STEPS", "28" if "flux" in kind else "4"))
-    guidance = float(os.getenv("LOCAL_IMAGE_GUIDANCE", "2.5"))
-    strength = float(os.getenv("LOCAL_IMAGE_STRENGTH", "0.75"))
-    negative = "room, interior, curtains, table, rug, lamp, people, text, watermark"
+    steps = int(os.getenv("LOCAL_IMAGE_STEPS", "32" if "flux" in kind else "4"))
+    # Lower guidance = less reinventing the product (Kontext over-edits at high CFG).
+    guidance = float(os.getenv("LOCAL_IMAGE_GUIDANCE", "2.0"))
+    strength = float(os.getenv("LOCAL_IMAGE_STRENGTH", "0.55"))
+    out_side = int(os.getenv("LOCAL_IMAGE_OUT_SIDE", "1024"))
+    negative = "room, interior, curtains, table, rug, carpet, lamp, people, text, watermark"
 
     if kind == "flux_kontext":
         return pipe(
@@ -239,6 +249,8 @@ def _run_local_pipe(pipe, kind: str, img: Image.Image) -> Image.Image:
             prompt=LOCAL_PROMPT,
             num_inference_steps=max(steps, 4),
             guidance_scale=guidance,
+            width=out_side,
+            height=out_side,
         ).images[0]
 
     if kind == "flux_i2i":
@@ -248,6 +260,8 @@ def _run_local_pipe(pipe, kind: str, img: Image.Image) -> Image.Image:
             num_inference_steps=max(steps, 4),
             strength=strength,
             guidance_scale=guidance,
+            width=out_side,
+            height=out_side,
         ).images[0]
 
     gen_kwargs: Dict[str, Any] = {
