@@ -46,11 +46,12 @@ cat <<'EOF'
 
 === Paleidimas (3 terminalai arba tmux) ===
 
-# 1) Ollama
-ollama serve
+# 1) Ollama — CPU only, kad FLUX gautu visa 4090 VRAM (llava scoring)
+OLLAMA_NUM_GPU=0 ollama serve
 
 # 2) AI serveris (FLUX Kontext ant CUDA)
 cd server && source .venv/bin/activate
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 # Pirmas kartas: huggingface-cli login  (FLUX.1-Kontext-dev license)
 python main.py
 

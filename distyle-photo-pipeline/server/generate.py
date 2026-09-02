@@ -210,15 +210,16 @@ def _load_local_pipe():
         pipe = AutoPipelineForImage2Image.from_pretrained(model, **load_kw)
         kind = "sd_i2i"
 
-    offload_default = "1" if device == "cuda" and kind == "flux_kontext" else "0"
-    use_offload = os.getenv("LOCAL_IMAGE_CPU_OFFLOAD", offload_default).lower() in (
-        "1",
-        "true",
-        "yes",
-    )
-    if device == "cuda" and use_offload:
-        pipe.enable_model_cpu_offload()
-    else:
+    offload_mode = os.getenv(
+        "LOCAL_IMAGE_OFFLOAD",
+        "sequential" if kind == "flux_kontext" else "model",
+    ).lower()
+    if device == "cuda" and offload_mode in ("sequential", "model", "1", "true", "yes"):
+        if offload_mode == "sequential":
+            pipe.enable_sequential_cpu_offload()
+        else:
+            pipe.enable_model_cpu_offload()
+    elif device == "cuda":
         pipe = pipe.to(device)
 
     _local_pipe = pipe
@@ -266,6 +267,14 @@ def _try_local(ref: bytes) -> Optional[bytes]:
     """Local img2img — FLUX Kontext on RunPod CUDA, sd-turbo fallback on CPU."""
     if not _local_available():
         return None
+
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:
+        pass
 
     pipe, kind = _load_local_pipe()
     img = _prepare_ref_image(ref)
