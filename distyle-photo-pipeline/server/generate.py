@@ -215,11 +215,8 @@ def _load_local_pipe():
         pipe = AutoPipelineForImage2Image.from_pretrained(model, **load_kw)
         kind = "sd_i2i"
 
-    # Without Ollama, model offload usually fits 24GB and looks better than sequential.
-    offload_mode = os.getenv(
-        "LOCAL_IMAGE_OFFLOAD",
-        "model" if kind == "flux_kontext" else "model",
-    ).lower()
+    # Full GPU load by default (A40/L40S 48GB+). On 24GB set LOCAL_IMAGE_OFFLOAD=model.
+    offload_mode = os.getenv("LOCAL_IMAGE_OFFLOAD", "0").lower()
     if device == "cuda" and offload_mode in ("sequential", "model", "1", "true", "yes"):
         if offload_mode == "sequential":
             pipe.enable_sequential_cpu_offload()
